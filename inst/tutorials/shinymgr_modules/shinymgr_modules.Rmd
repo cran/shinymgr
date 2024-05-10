@@ -1,0 +1,452 @@
+---
+title: "shinymgr-08: shinymgr_modules " 
+tutorial:
+  id: "shinymgr_modules"
+  version: 1.1
+output: 
+  learnr::tutorial:
+    allow_skip: true
+    css: css/style.css
+bibliography: www/shinymgr_modules.bib
+csl: www/apa.csl
+runtime: shiny_prerendered
+description: "Describes how to setup a shinymgr framework on your machine."
+---
+
+```{r setup, include=FALSE}
+source('www/includes.R')
+```
+
+
+##  ![](www/shinymgr-hexsticker.png){width=50px} Introduction
+
+Now that we've introduced the *shinymgr* framework and database, we can illustrate how to create modules and register them into the database. When you launched this tutorial, a new demo *shinymgr* project was created in the tutorial's temporary directory for illustrative purposes.
+
+As a friendly reminder, the *shinymgr* developer (you) write modules that suit your purpose. The modules are logged (registered) into the *shinymgr* database as a means of tracking which modules are available. For example, the code below shows the modules that are registered in the tutorial's demo database.
+
+```{r}
+# get the database path
+db_path <- paste0(
+  tempdir(), 
+  "/shinymgr/database/shinymgr.sqlite"
+)
+
+# set a connection to the database
+conx <- DBI::dbConnect(
+  drv = RSQLite::SQLite(), 
+  dbname = db_path
+)
+
+# look at the module table in the database
+DBI::dbReadTable(
+  conn = conx, 
+  name = "modules"
+)
+
+# disconnect from database
+DBI::dbDisconnect(conx)
+```
+
+Please scroll through this table and note the various columns. 
+
+Each of these stand-alone modules have a corresponding module script that is stored in the "modules" folder with a *shinymgr* project.  Further, each module's arguments, returns, and reliant packages are stored in the  *modFunctionArguments*,  *modFunctionReturns*, and *modPackages* tables in the *shinymgr* database.
+
+> &#128073;&#127996; In *shinymgr*, the app builder relies almost exclusively on the database in order to write app modules such as 'iris_explorer'.  Thus,  properly registering stand-alone modules into the database is crucial. 
+
+This tutorial will introduce the functions, `mod_init()`, `mod_register()`, and `check_mod_info()`. 
+
+## The mod_init() function
+
+The `mod_init()` function is used to start a new module to be registered in the *shinymgr* database. The `mod_init()` function creates a template R script in the modules folder containing a standardized header, as well as skeleton ui and server functions that can be filled in with the contents of a module. This function is run in the console, and uses the format:
+
+```{r, eval = FALSE}
+mod_init(modName, author, shinyMgrPath)
+```
+
+where
+
+- **modName** is a string containing a unique name for the module (no spaces), used as the primary key in the modules table of the database and the names of the module ui/server functions 
+- **author** is the author of the module, formatted as "Lastname, Firstname" 
+- **shinyMgrPath** is the path to an existing shinymgr directory.
+
+Let's have a look at the function's help page:
+
+```{r modinithelp, exercise = TRUE, echo= FALSE}
+help(mod_init, package = "shinymgr")
+```
+
+
+For example, suppose we wish to create a new module called "iris_intro", which will be added to the "iris_explorer" app as tab 1 to inform users how to use the app.  Assuming the current temporary directory points to an existing *shinymgr* project, the following code would create the framing for this new module.  
+
+```{r, eval = FALSE}
+mod_init(
+  modName = "iris_intro", 
+  author = "Baggins, Bilbo", 
+  shinyMgrPath = tempdir()
+)
+```
+
+The function will create a file in the "modules" folder of the *shinymgr* directory called "iris_intro.R". The contents of the file should look like this:
+
+```{r, eval = FALSE}
+#!! ModName = iris_intro
+#!! ModDisplayName = Enter your module shiny display name here.
+#!! ModDescription = Enter your module description here.
+#!! ModCitation = Baggins, Bilbo.  (2022). iris_intro. [Source code].
+#!! ModNotes = Enter your module notes here.
+#!! ModActive = 1/0
+#!! FunctionArg = argName1 !! argDescription !! argClass
+#!! FunctionArg = argName2 !! argDescription !! argClass
+#!! FunctionReturn = returnName1 !! returnDescription !! returnClass
+#!! FunctionReturn = returnName2 !! returnDescription !! returnClass
+
+
+# the ui function
+iris_intro_ui <- function(id) {
+  ns <- NS(id)
+  tagList(
+  
+  )
+}
+
+
+# the server function
+iris_intro_server <- function(id, argName1, argName2) {
+  moduleServer(id, function(input, output, session) {
+    ns <- session$ns
+    
+    return(
+      reactiveValues(
+        returnName1 = reactive(returnName1()),
+        returnName2 = reactive(returnName2())
+      )
+    )
+  })
+}
+```
+
+As you can see, the header, ui, and server functions have been created following the formats we specified in earlier tutorials. We will go over the details of each line in the header in the next section, though most should be self-explanatory.
+
+## Module file headers
+
+Each time `mod_init()` is run, it will create an R script with a header that generally looks like this:
+
+```{r, eval = FALSE}
+#!! ModName = new_mod
+#!! ModDisplayName = Enter your module shiny display name here.
+#!! ModDescription = Enter your module description here.
+#!! ModCitation = lastName, FirstName.  (Year). new_mod. [Source code].
+#!! ModNotes = Enter your module notes here.
+#!! ModActive = 1/0
+#!! FunctionArg = argName1 !! argDescription !! argClass
+#!! FunctionArg = argName2 !! argDescription !! argClass
+#!! FunctionReturn = returnName1 !! returnDescription !! returnClass
+#!! FunctionReturn = returnName2 !! returnDescription !! returnClass
+```
+
+The information in the header will ultimately be uploaded into specific *shinymgr* database tables (namely, "modules", "modFunctionArguments", "modFunctionReturns").  Therefore, in the header, only the contents after the equals sign should be changed, as this header is used to populate the database using `mod_register()`.
+
+### Header details
+
+- **ModName** is the name of the module that is specified by the *modName* argument that is passed to `mod_init()`. It will be assigned to the names in the module ui and server functions (i.e. the functions must be in the format *ModName*_ui and *ModName*_server). The *ModName* must be unique for the given *shinymgr* project.
+
+- **ModDisplayName** is the display name of the module, and need not match the *ModName* (nor does it need to be unique). It is stored as a character string in the database. 
+
+- **ModDescription** is a description of the module, typically explaining what it does. It is also stored as a character string in the database. 
+
+- **ModCitation** is an auto-generated citation for the module, derived from the *author* and  *modName* arguments passed to `mod_init()`, and the current year. This default citation can be modified anytime before registering the module into the database.
+
+- **ModNotes** contains any developer notes about the module.
+
+- **ModActive** indicates whether the module is active (1 = yes, 0 = no). When a new app is created with *shinymgr*'s app builder, only active modules are available to be included in the new app. 
+
+- **FunctionArg** is for any arguments (other than id) in the server function, and uses the format
+`argumentName !! argument description !! expected argument datatype`. Argument names must match exactly with the server function's argument names. A new **FunctionArg** line is needed for each argument. If your module does not include arguments, delete these lines from the template. This content will populate the "modFunctionArguments" database table and is necessary for the appBuilder to work properly.
+
+- **FunctionReturn** is for any returns by the server function, and also uses the format `returnedObjectName !! returned object description !! return datatype`. Like FunctionArg, the returnNames must match exactly with the names of reactive objects being returned by the server function, and a new line is needed for each argument. If your module does not include returns, delete these lines from the template. This content will populate the "modFunctionReturns" database table  and is necessary for the appBuilder to work properly.
+
+> &#128073;&#127996; The *shinymgr* package uses the *renv* package [@renv] to identify a module's package dependencies, as described in the next section.  Therefore, when using functions from other packages in your module, it is essential that you use the package::function() notation within your module code.  
+
+
+Now that you know how the header works, you can fill in the contents of the module as you would normally. In our example "iris_intro.R" module, we will modify the header as needed.  Since there are no arguments or returns, the header will look rather empty. We also removed the developer notes:
+
+```{r, eval = FALSE}
+#!! ModName = iris_intro
+#!! ModDisplayName = Iris Explorer introduction Page
+#!! ModDescription = This module is simply a page of text with instructions for the iris explorer module.
+#!! ModCitation = Baggins, Bilbo.  (2022). iris_intro. [Source code].
+#!! ModActive = 1
+
+# the ui function --------------------
+iris_intro_ui <- function(id) {
+  ns <- NS(id)
+  tagList(
+    wellPanel(
+      textOutput(ns("instructions"))
+    )
+  )
+}
+
+# the server function ----------------
+iris_intro_server <- function(id) {
+  moduleServer(id, function(input, output, session) {
+    output$instructions <- renderText({
+      "These are instructions for the iris_explorer app. On the next tab, 
+      select two columns from the iris dataset, and then choose the number of
+      clusters.  Press the 'next' button to advance to the next tab, where you
+      can subset the data.  The final tab allows you to save the inputs and 
+      returns of each module as an .RDS file."
+    })
+  })
+}
+```
+
+> &#128073;&#127998;**Make sure header information matches your functions, and that you delete any unused lines from the header!**
+
+
+> &#128073;&#127997;We recommend that you fill in the header after you are satisfied with your module to avoid updating arguments or returns as edits are made. 
+
+
+Modules are typically more complex than our "iris_intro" module.  Let's have a look at a demo module that comes with *shinymgr*. This module is called "single_column_plot", and in a nutshell, allows a user to upload a dataset, select a column from it, and then plots the selected data with the `ggplot2::qplot()` function.  The `qplot()` function is part of the **ggplot2** package [@ggplot2]. This module's header looks like this:
+
+```{r, echo = TRUE}
+#!! ModName = single_column_plot
+#!! ModDisplayName = Plot Single Column
+#!! ModDescription = Uses qplot to plot a column in a dataset
+#!! ModCitation = Baggins, Bilbo.  (2022). single_column_plot. [Source code].
+#!! ModNotes = Notes on the module go here.
+#!! ModActive = 1
+#!! FunctionArg = dataset !! dataframe to be explored !! data.frame
+#!! FunctionReturn = selectedCol !! name of column selected !! character
+#!! FunctionReturn = g !! plot of column distribution !! ggproto
+```
+
+Let's begin by examining the function arguments and returns defined in the module header:
+
+```{r, eval = FALSE}
+#!! FunctionArg = dataset !! dataframe to be explored !! data.frame
+```
+
+indicates there is one function argument named "dataset" with a description of "dataframe to be explored", and its class is "data.frame".  These elements are separated by a double exclamation point `!!`
+
+The module has two returns:
+
+```{r}
+#!! FunctionReturn = selectedCol !! name of column selected !! string
+#!! FunctionReturn = g !! plot of column distribution !! ggproto
+```
+
+The first return is named "selectCol", with a description "name of column selected" and a class "string".  The second return is named "g" with a description "plot of column distribution" and class "ggproto".  
+
+```{r howmany, echo = FALSE}
+quiz(
+  question("How many arguments can be included in a module?",
+    answer("1"),
+    answer("2"),
+    answer("As many as needed", correct = TRUE),
+    message = "Each argument should have its own line in the header.",
+    allow_retry = TRUE
+  ),
+  question("How many returns can be included in a module?",
+    answer("1"),
+    answer("2"),
+    answer("As many as needed", correct = TRUE),
+    message = "Each return should have its own line in the header.",
+    allow_retry = TRUE
+  ),
+  question("How many packages can be included in a module?",
+    answer("1"),
+    answer("2"),
+    answer("As many as needed", correct = TRUE),
+    message = "Make sure to identify functions from other packages with the package::function() syntax!",
+    allow_retry = TRUE
+  )
+)
+  
+```
+
+> &#128073;&#127999; Once the module and its header are complete, we can register it into the database with the `mod_register()` function (described in the next section), where it can then be used in the app builder.
+
+
+## The mod_register() function
+
+After your module script is complete, we can register it using `mod_register()`. This function parses the header in the script and inserts that information into the appropriate tables in the *shinymgr* database. It is used in the console in this format:
+
+```{r, eval = FALSE}
+mod_register(modName, shinyMgrPath)
+```
+
+where
+
+- **modName** is the name of the module. It must be the same as the file name without the extension, as well as the ModName in the header.
+- **shinyMgrPath** is the path to your *shinymgr* directory
+
+The "iris_intro" mod would be registered with this code:
+
+```{r, eval = FALSE}
+shinyMgrPath <- tempdir()
+shinymgr::mod_register(
+  modName = "iris_intro", 
+  shinyMgrPath = shinyMgrPath
+)
+```
+
+After you've run this function, you should be able to see your newly registered module in the database in the modules table. The arguments, returns, and packages will also be available in their respective tables ("modFunctionArguments", "modFunctionReturns", and "modPackages"). 
+
+
+> &#128073;&#127995; Remember you can easily access the database via the Developer Tools tab when *shinymgr* is launched.
+
+Alternatively, we can use the *DBI* [@DBI] package to query the different database tables directly.  Below, we establish the filepath to the database, make a connection, and then use `dbGetQuery()` to query the different tables associated with a given module:
+
+```{r}
+# get the database path
+db_path <- paste0(tempdir(), "/shinymgr/database/shinymgr.sqlite")
+
+# set a connection to the database
+conx <- DBI::dbConnect(
+  drv = RSQLite::SQLite(), 
+  dbname = db_path
+)
+
+# look at the single_column_plot arguments
+DBI::dbGetQuery(
+  conn = conx,
+  statement = "SELECT *
+    FROM modFunctionArguments
+    WHERE fkModuleName= 'single_column_plot';"
+)
+
+# look at the single_column_plot returns
+DBI::dbGetQuery(
+  conn = conx,
+  statement = "SELECT *
+    FROM modFunctionReturns
+    WHERE fkModuleName= 'single_column_plot';"
+)
+
+# look at the single_column_plot packages
+DBI::dbGetQuery(
+  conn = conx,
+  statement = "SELECT *
+    FROM modPackages
+    WHERE fkModuleName = 'single_column_plot';"
+)
+
+# disconnect from database
+DBI::dbDisconnect(conx)
+```
+
+Notice that the module's package dependencies have been registered in the database table "modPackages". The `mod_register()` function uses the renv package (Ushey 2023) to identify any package dependencies and inserts them into the modPackages table. It does so by crawling the module script, looking for calls in the form of:
+
+- library(package)
+
+- require(package)
+
+- package::function()
+
+> &#128073;&#127997;  We recommend the package::function() notation for any call to an external function within a module.
+
+
+## Modifying module information
+
+Since these tables are used almost exclusively by the builder, it is not recommended to modify these tables manually, as they could introduce bugs in the app stitching process. As such, none of these tables are editable in the *shinymgr* UI. In addition, modules can only be deleted from the database if they are not part of an existing app. 
+
+However, there are a few ways to modify module information:
+
+1. If the module is not part of an existing *shinymgr* app, the simplest thing to do is to delete the module from the database only (retaining the .R script), and re-register it after modifying the script's header information.
+2. If the module is part of existing *shinymgr* apps, you can use `DBI` functions to update the database with caution.
+
+### Deleting the module
+
+**Note that this method does not work if the module is already used in an app.**
+Modules can be deleted using the *shinymgr* UI via the database tab of the "Developer Tools". The UI will allow you to specify if you want to delete the record of the module *without deleting the associated files*. This will delete the relevant database records in modules, modFunctionArguments, modFunctionReturns, and modPackages. Then, you can modify the header in your script to your liking, and re-register the module to re-enter it into the database using `mod_register()`.  This ensures that the module header and database are matched.
+
+### Using `DBI` functions
+
+This method makes use of the `DBI` package to work with the database directly [@DBI]. This method can be used with any table, but doing so may mess with functionality of the app builder, so it's only recommended for editing module metadata. Typically, the primary keys in these tables should not be edited.
+
+The general process of updating a record in the database is:
+
+1. Connect to the database
+2. Send a query to update a certain record in a table
+3. Clear the result of the database
+4. Disconnect from the database
+
+For this example, we will change the author in the citation from Bilbo Baggins to Ash Ketchum. Note that because the citation is a character string, we have to replace the entire string, not just a section of it. Now, when you look at the database record for the iris_intro module, you should see Ash Ketchum in the citation (we love a good forgery)! 
+
+```{r updateauthor}
+# 1. connect to the database
+db_path <- paste0(tempdir(), "/shinymgr/database/shinymgr.sqlite")
+
+con <- DBI::dbConnect(
+  drv = RSQLite::SQLite(),
+  dbname = db_path
+)
+
+# 2. send the query
+rs <- DBI::dbSendQuery(
+  conn = con,
+  statement = 
+    "UPDATE modules
+    SET modCitation = 'Ketchum, Ash.  (2022). iris_intro. [Source code].'
+    WHERE pkModuleName = 'iris_intro';"
+)
+
+# 3. clear the result
+DBI::dbClearResult(rs)
+
+# 4. show the update
+DBI::dbGetQuery(
+  conn = con,
+  statement = 
+    "SELECT *
+    FROM modules
+    WHERE pkModuleName = 'iris_intro';"
+)
+
+# 5. disconnect from the database
+DBI::dbDisconnect(conn = con)
+
+```
+
+
+> &#128073;&#127998;  However, this will not change what's written in iris_intro.R, and the R script must be modified manually.
+
+## Testing integrity
+
+For the *shinymgr* app builder to work properly, module information must be consistent between the script and the database. Particularly, the name, arguments, returns, and package dependencies must be the same. While module scripts can be checked manually, we have a function called `check_mod_info()` that will speed up the process. For example, to check that the information for "subset_rows" is consistent between the script's header and the *shinymgr* database, we would run:
+
+```{r}
+shinyMgrPath <- paste0(tempdir(), "/shinymgr")
+check_mod_info(modName = "subset_rows", shinyMgrPath = shinyMgrPath)
+```
+
+This function parses the header of the module's script and compares it to the records in the database. It prints a message for each of the 3 module-related tables (*modules*, *modFunctionArguments*, and *modFunctionReturns*), and returns a list of dataframes showing which values match. A value of `TRUE` indicates that the fields match, and `FALSE` would indicate that they do not. A value of `NA` indicates that the field is `NA` in either the header or the database (or both).
+
+## Summary
+
+This tutorial introduced the `mod_init()`, `mod_register()`, and `check_mod_info()` functions, which aid in properly filling out the *modules*, *modFunctionArguments*, *modFunctionReturns*, and *modPackages* tables. We also introduced methods to edit these records after they have been entered, but strongly discourage you from doing so in general.
+
+
+>&#128073;&#127996; If you’d like a pdf of this document, use the browser “print” function (right-click, print) to print to pdf. If you want to include quiz questions and R exercises, make sure to provide answers to them before printing.
+
+## References
+
+
+<div id="refs"></div>
+
+
+## What's next?
+
+Our next stop is the *shinymgr* app builder, where you can build apps using your registered modules. See you there!
+
+```{r, eval = FALSE}
+learnr::run_tutorial(
+  name = "apps", 
+  package = "shinymgr"
+)
+```
+
+
+
+

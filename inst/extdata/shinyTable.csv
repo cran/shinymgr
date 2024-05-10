@@ -1,0 +1,9 @@
+pkTableID,fkTableName,primaryTab,sortOrder,subTable,description
+1,apps,app mgr,1,appTabs,"This is the apps table. New records are added by the app builder. Records deleted from this table will cascade deletions to the appStitching, appTabs, tabs, and tabModules tables. The corresponding app file will also be deleted if it is present in the modules_apps folder."
+2,appStitching,app mgr,2,,This is the appStitching table (read-only). This table is used by the app builder to create the app script.
+3,tabs,tab mgr,1,tabModules,This is the tabs table (read-only).
+4,modules,module mgr,1,modPackages,"This is the modules table. New modules can be added using the mod_init and mod_register functions. Records deleted from this table will cascade deletions to the modFunctionArguments, modFunctionReturns, and modPackages tables. The corresponding file in the modules folder will also be deleted."
+5,modFunctionArguments,module mgr,2,,This is the modFunctionArguments table (read-only).
+6,modFunctionReturns,module mgr,3,,This is the modFunctionReturns table (read-only).
+7,modPackages,module mgr,4,,This is the modPackages table (read-only).
+8,reports,report mgr,1,appReports,"This is the reports table. New records are added through the Add Report tab. Records deleted from this table will cascade deletions to the appReports table, and will delete any corresponding files."

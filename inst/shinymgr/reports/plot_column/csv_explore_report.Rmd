@@ -1,0 +1,30 @@
+---
+title: 'Annual Report for CSV explorer'
+output: html_document
+params:
+  file: 
+   input: file
+   label: "Choose RDS"
+   value: ""
+   multiple: FALSE
+   buttonLabel: "Browse to analysis output..."
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(knitr)
+ps <- readRDS(params$file)
+```
+
+This report summarizes an analysis of `r ps$'mod1-upload'$name` data, where `r ps$'mod2-sample_num'` rows were randomly subset. Of these records, `r ps$'mod3-selectedCol'` had this distribution:
+
+```{r}
+ps$returns$data3$g
+```
+
+And `r ps$'mod4-selectedCol'` had this distribution:
+
+```{r}
+ps$returns$data4$g
+```
+

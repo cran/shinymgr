@@ -1,0 +1,17 @@
+bibentry(
+
+  "Manual",
+
+  title = "shinymgr: A framework for building, managing, and stitching shiny modules into reproducible workflows.",
+
+  author = "Laurence Clarfeld, Caroline Tang, and Therese Donovan",
+
+  year = 2024,
+
+  publisher = "U.S. Geological Survey software release. Reston, VA.",
+
+  note = "R package version 1.1.0",
+
+  doi = "10.5066/P9UXPOBN"
+
+)

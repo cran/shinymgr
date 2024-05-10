@@ -1,0 +1,610 @@
+---
+title: "shinymgr-12: Deployment"
+tutorial:
+  id: "deployment"
+  version: 1.1
+output: 
+  learnr::tutorial:
+    allow_skip: true
+    css: css/style.css
+runtime: shiny_prerendered
+description: "Deploying a shinymgr project for your purposes."
+---
+
+```{r setup, include=FALSE}
+source('www/includes.R')
+```
+
+## ![](images/shinymgr-hexsticker.png){width="50px"} Introduction
+
+You've made it! This is our final tutorial. Here, we show you how to incorporate your *shinymgr* project into your own R package or deploy it on a server, where your users can run the purpose-driven apps that you created. Generally speaking, deployment entails divorcing from the *shinymgr* development framework that have been the focus of previous tutorials.
+
+>&#128073;&#127998;In most cases, you will maintain your *shinymgr* project as a separate project from the package or server deployment so that you can continue to upgrade your *shinymgr* project (database and all) independent from other deployments.
+
+To illustrate the deployment process, a new *shinymgr* demo project was setup when you launched the tutorial. As a friendly reminder, a *shinymgr* directory named "shinymgr" contains the following folder structure.
+
+```{r, echo = FALSE, comment = NA}
+fs::dir_tree(
+  path = paste0(tempdir(), "/shinymgr"),
+  recurse = FALSE
+)
+```
+
+Of these, a few folders are no longer needed for deployment.
+
+1.  "analyses" - This directory includes previously run analyses as RDS files, and is included only for demo purposes. Your users will store analyses (RDS file) anywhere they would like on their machine.
+2.  "data" - If none of your modules consume datasets in the "data" folder, this folder is not needed. However, this folder should be retained if your modules call datasets stored here.
+3.  "database" - While the database is critical for tracking apps, modules, reports, etc. during development, it is no longer needed for a deployed project.
+
+>&#128073;&#127996;The remaining directories are needed; they simply need to be copied to the correct place in your package or server environment.
+
+We'll begin by describing how to add your *shinymgr* project to your own package, and then discuss how to deploy it on a server.
+
+## A basic R package
+
+Your *shinymgr* project can be incorporated into your own package, where the "apps" you build help users with analyses that are relevant to your package.
+
+If you have not developed an R package before, we strongly recommend that you read through the R packages book by Hadley Wickham and Jenny Bryan at <https://r-pkgs.org/>. Here, we will create the simplest of packages and show you how to copy the *shinymgr* demo project into it.
+
+>&#128073;&#127998;If you want a fully functioning package: Before you proceed, read this article on the Posit helppage <https://support.posit.co/hc/en-us/articles/200486498> and make sure you have the necessary tools for package development. This step involves installing new software onto your computer if you are a Windows user, and checking to make sure you've done it correctly. You may need to run R in administrator mode.
+
+>&#128073;&#127996;Note: If you have a second instance of RStudio running, you may wish to create a new package by creating a new project and following along with the RStudio prompts. 
+
+We will use an R package called *devtools* to help with package creation.
+
+```{r, eval = TRUE}
+library(devtools)
+```
+
+Our package will create two tiny functions, `f()` and `g()`, which have two arguments name "x" and "y" that are numeric. One function will add "x" and "y", while the other will subtract "y" from "x".
+
+```{r, eval = F}
+f <- function(x, y) x + y
+g <- function(x, y) x - y
+```
+
+Now, let's use the `package.skeleton()` function in base R to create a package that includes both functions, along with R's built-in datasets named  "cars".
+
+```{r, eval = T, warning = FALSE}
+package.skeleton(
+  path = tempdir(), 
+  name = "myPackage",
+  list = c("f", "g", "cars"),
+  force = TRUE
+)
+
+```
+
+Let's look at what is included in the package directory itself.
+
+```{r, comment = NA, echo = FALSE}
+library(fs)
+
+fs::dir_tree(
+  path = paste0(tempdir(), "/myPackage"),
+  recurse = TRUE)
+```
+
+Notice there are several folders and files here:
+
+1.  The "data" directory stores built-in datasets that come with your package.
+2.  The "DESCRIPTION" file provides metadata about your package.
+3.  The "man" (manual) directory stores the helpfiles you create for your users.
+4.  The "NAMESPACE" file declares the functions that your package exports for users, as well as the external functions your package imports from other packages.
+5.  The "R" directory stores R files that contain the function code.
+6.  The "Read-and-delete-me" file should be read and deleted.
+
+This is the file structure of a bare-bones package. The functions `f()` and `g()` have been added to the "R" folder.
+
+Next, we will remove all files except the DESCRIPTION, as we'll soon recreate them with *devtools* functions.
+
+```{r, eval = T}
+# remove some original NAMESPACE file
+file.remove(
+  paste0(tempdir(), "/myPackage/NAMESPACE")
+)
+
+# remove the Read-and-delete-me file
+file.remove(
+  paste0(tempdir(), "/myPackage/Read-and-delete-me")
+)
+
+# remove original R functions f and g
+file.remove(
+  list.files(
+    paste0(tempdir(), "/myPackage/R"),
+    full.names = TRUE
+  )
+)
+
+# remove original documentation in the man folder
+file.remove(
+  list.files(
+    paste0(tempdir(), "/myPackage/man"),
+    full.names = TRUE
+  )
+)
+```
+
+
+Now, let's re-create the two original .R function files so that they include *roxygen* comments, which are used to create the function's help files, NAMESPACE (and more).
+
+```{r, eval = TRUE}
+f_text <- c(
+  "#' @title Add two numbers",     
+  "#' @param x An integer or numeric value.",
+  "#' @param y An integer or numeric value.",
+  "#' @return A numeric vector.",
+  "#' @export",
+  "#' @examples",
+  "#' f(x = 3, y = 2)",
+  "#' f(x = 1.6, y = 2.4)",
+  "f <- function(x, y) {x + y}"
+  )
+
+g_text <- c(
+  "#' @title Subtract two numbers",     
+  "#' @param x An integer or numeric value.",
+  "#' @param y An integer or numeric value.",
+  "#' @return A numeric vector.",
+  "#' @export",
+  "#' @examples",
+  "#' f(x = 3, y = 2)",
+  "#' f(x = 1.6, y = 2.4)",
+  "g <- function(x, y) {x - y}"
+  )
+```
+
+We'll use the `writeLines()` function to create the R scripts for the two functions:
+
+```{r, eval = T}
+# write the f.R file
+writeLines(
+  con = paste0(tempdir(), "/myPackage/R/f.R"), 
+  text = f_text
+)
+
+# write the g.R file
+writeLines(
+  con = paste0(tempdir(), "/myPackage/R/g.R"), 
+  text = g_text
+)
+```
+
+Let's have a look at the `f()` function file that was produced:
+
+```{r, eval = T, comment = '', class.output='r', echo=FALSE}
+cat(
+  paste(
+    readLines(paste0(tempdir(), "/myPackage/R/f.R")), 
+    collapse = '\n'
+  )
+)
+```
+
+This is a bare-bones example of an R function. The script begins with *roxygen* comments that define the function's help page and dependencies, followed by the function's code.
+
+If you are following along in a second instance of R, you should also remove the functions "f" and "g" from your global environment if present, as they are now tucked safely into the package's R directory and will cause conflicts when trying to check the package.
+
+```{r, eval = F}
+# remove the functions from your global environment
+rm(list = "f", "g")
+```
+
+
+Next, we use *devtools* `document()` function to document the package. This function will create the .Rd files (**R** **d**ocumentation) that are stored in the package's "man" folder, and will further write the NAMESPACE file.
+
+```{r, eval = TRUE, warning = FALSE}
+devtools::document(pkg = paste0(tempdir(), "/myPackage"))
+```
+
+Now that our package is documented, we can run the `check()` function to check if the package passes initial tests. (We won't actually run this in the tutorial to save time).
+
+```{r, eval = F}
+devtools::check(
+  pkg = "myPackage", 
+  manual = TRUE)
+```
+
+Hopefully, if you are following along, the R CMD check results show 0 errors and 0 warnings.
+
+Now that we have a package in place, we are ready to incorporate the *shinymgr* demo project into your package. The package, "myPackage", will contain 2 functions ("f" and "g") plus a shiny application called "myApp" (which is the demo *shinymgr* master app).
+
+>&#128073;&#127998;We realize the functions, "f" and "g", along with the RData file "cars" have nothing to do with the *shinymgr* demo modules. Bear with us. The main idea is that you would write your own modules and create *shinymgr* apps  that highlight functions in *your* own package.
+
+## Incorporating shinymgr
+
+When you launched this tutorial, the *shinymgr* demo project was created in the tutorial's temporary directory. Additionally, myPackage was created in the temporary directory as well. Thus, the tutorial's temporary directory contains a folder called "shinymgr", and a second folder called "myPackage". We will be moving files from the "shinymgr" directory to the "myPackage" directory in this section, and then running package tests once again.
+
+Here are the tasks:
+
+1.  Copy anything in *shinymgr* data folder into the main level package directory called "data".
+2.  Copy portions of the *shinymgr* framework into a main level package directory called "inst".
+3.  Modify the **new_analysis.R** script to remove the dependency on the *shinymgr* database.
+4.  Remove the developer tools from your app.
+5.  Modify the **global.R** script to remove the dependency on the *shinymgr* package.
+6.  Create a new function to launch your app.
+7.  Add *shiny*-related packages as a dependency in your DESCRIPTION file.
+
+### 1. Copy data from *shinymgr*
+
+The first few steps are simple. Just use the `file.copy()` function to copy items in the "data" directory in *shinymgr* over to **myPackage.**
+
+```{r}
+# copy the shinymgr data into the package
+file.copy(
+  from = paste0(tempdir(), "/shinymgr/data"), 
+  to = paste0(tempdir(), "/myPackage/"), 
+  recursive = TRUE
+)
+```
+
+After this step, the package file structure should look like this:
+
+```{r, comment = NA, echo = FALSE}
+fs::dir_tree(
+  path = paste0(tempdir(), "/myPackage"),
+  recurse = TRUE)
+```
+
+### 2. Copy shiny from *shinymgr*
+
+The actual shiny app should be stored in the "inst" folder of the R package. Here, we will create the directory "inst", and further add a subdirectory called "myApp". Once files are copied over to the package, they can be modified (don't modify them in your *shinymgr* development project). 
+
+```{r, eval = T}
+# create the myApp directory
+dir.create(
+  path = paste0(tempdir(), '/myPackage/inst/myApp'),
+  recursive = TRUE
+)
+```
+
+Next, let's copy over the *shinymgr* modules, modules_app, modules_mgr, and reports directory to the package.
+
+```{r}
+# get the filepaths for the folders of interest
+shinymgr_dirs <- paste0(
+  tempdir(), 
+  "/shinymgr/", 
+  c('modules', 'modules_app', 'modules_mgr', 'reports')
+)
+
+# loop through folders and copy them into the package
+for (i in 1:length(shinymgr_dirs)) {
+  file.copy(
+    from = shinymgr_dirs[i], 
+    to = paste0(tempdir(), "/myPackage/inst/myApp"), 
+    recursive = TRUE
+  )
+}
+
+```
+
+Next, let's copy over the ui, global, and server R scripts that provide the master shiny app:
+
+```{r}
+# list the main shiny R files
+shiny_files <- c("ui.R", "global.R", "server.R")
+
+# copy the files into the package
+for (i in 1:3) {
+  file.copy(
+    from = paste0(tempdir(), "/shinymgr/", shiny_files[i]), 
+    to = paste0(tempdir(), "/myPackage/inst/myApp")
+  )
+}
+```
+
+### 3. Modify **new_analysis.R**
+
+During development of your *shinymgr* project, to see a list of apps that can be run, the database is queried and will display only apps that are *active*. When you deploy your *shinymgr* apps in a package, ensure that the *modules_app* folder contains only those app scripts that are active and featured in your deployment; the reliance on the database will be broken. 
+
+To sever this dependence on the database, open the deployment copy of the **new_analysis.R** script (which is found in the "modules_mgr" directory), delete lines 35-43, and un-comment line 48.
+
+```{r, eval = F, attr.source='.numberLines', class.source="bg-danger"}
+35 >>    # Get a list of available apps (from the database)
+36 >>    analysis_list <- sort(qry_row(
+37 >>      'apps',
+38 >>      list(
+39 >>        appActive = 1
+40 >>      ),
+41 >>      'pkAppName',
+42 >>      shinyMgrPath
+43 >>    )$pkAppName)
+```
+
+```{r, eval = F, attr.source='.numberLines'}
+44 >>    
+45 >>    # Get a list of available apps (from the directory contents)
+46 >>    # NOTE: Un-comment the below code (and delete the code above) after development 
+47 >>    # is complete to remove the dependency on the shinymgr sqlite database.
+48 >>    # analysis_list <- sort(tools::file_path_sans_ext(dir('modules_app')))
+
+```
+
+By deleting lines 36-43 and un-commenting the code on line 48, the database dependency is removed.
+
+### 4. Remove the developer tools
+
+In the deployed version, we next remove the developer tools from the **ui.R** and **server.R** scripts. 
+
+To remove the developer tools from **ui.R**, first delete lines 9-11 to remove the "Developer Portal" header.
+
+```{r, eval = F, attr.source='.numberLines', class.source="bg-danger"}
+9  >>    hr(),
+10 >>    tags$h3("Developer Portal", style = "text-align:center"),
+11 >>    hr(),
+```
+
+You may also consider modifying lines 16 and 21 so that they no longer have the "beta" label.
+```{r, eval = F, attr.source='.numberLines', class.source="bg-danger"}
+16 >>    text = "Analysis (beta)", 
+```
+
+```{r, eval = F, attr.source='.numberLines', class.source="bg-success"}
+16 >>    text = "Analysis", 
+```
+
+$\vdots$
+```{r, eval = F, attr.source='.numberLines', class.source="bg-danger"}
+21 >>    text = "Reports (beta)", 
+```
+
+```{r, eval = F, attr.source='.numberLines', class.source="bg-success"}
+21 >>    text = "Reports", 
+```
+
+Next, delete lines 25-29 to remove the Developer Tools option in the sidebar menu. Be sure to remove only the comma at the end of line 24 to avoid errors when launching the app.
+
+```{r, eval = F, attr.source='.numberLines', class.source="bg-danger"}
+24 >>     ),
+25 >>   menuItem(
+26 >>     text = "Developer Tools", 
+27 >>     tabName = "DevTools", 
+28 >>     icon = icon("wrench")
+29 >>     )
+```
+
+Finally, delete lines 48-82 to remove the Developer Tools tab. Again, remove only the comma at the end of line 46 to avoid errors when launching the app.
+
+```{r, eval = F, attr.source='.numberLines', class.source="bg-danger"}
+46 >>   ),
+47 >> 
+48 >>   # developer Tools
+49 >>   tabItem(
+50 >>     tabName = "DevTools",
+51 >>     tabsetPanel(
+52 >>       id = "dev_tool_tabs",
+53 >>        
+54 >>       # builder goes in first tab
+55 >>       tabPanel(
+56 >>         title = "Build App",
+57 >>         value = "build_tab",
+58 >>         uiOutput("build_app")
+59 >>       ),
+60 >>       
+61 >>       # database tab
+62 >>       tabPanel(
+63 >>         title = "Database",
+64 >>         value = "shinymgr_db",
+65 >>         uiOutput("my_db_output")
+66 >>       ),
+67 >>      
+68 >>       # queries
+69 >>       tabPanel(
+70 >>         title = "Queries",
+71 >>         value = "query_db",
+72 >>         uiOutput("query_output")
+73 >>       ),
+74 >>       
+75 >>       # tab for adding reports
+76 >>       tabPanel(
+77 >>         title = "Add Report",
+78 >>         value = "add_report_tab",
+79 >>         uiOutput("add_report_output")
+80 >>       )
+81 >>     ) # end tabsetPanel
+82 >>   ) # end of developer tools tabItem
+```
+
+The **ui.R** script should now only contain tabs for new analyses and new reports. 
+
+Next, we have to modify the **server.R** script so that it only loads the `new_analysis` and `new_report` modules. The final **server.R** script should just look like this:
+
+```{r, eval = F, class.source="bg-success"}
+source("global.R")
+
+server <- function(input, output, session) {
+  
+  # call the  new_analyses module ui -----------------------------
+  output$new_analysis <- renderUI({
+    new_analysis_ui("new_analysis")
+  })
+  
+  new_analysis_server(
+    id = "new_analysis", 
+    tabSelect = reactive({input$tabs}), 
+    shinyMgrPath = shinyMgrPath
+    )
+  
+  # call the new_report module ui -----------------------------
+  output$new_report <- renderUI({
+    new_report_ui("new_report")
+  })
+  
+  new_report_server(
+    id = "new_report"
+    )
+  
+} # end of server function
+```
+
+We have now removed all the developer tools from the app, and so their corresponding modules can also be deleted.
+
+```{r}
+# list the main shiny R files
+dev_modules_files <- c(
+  "add_app.R", "add_mod.R", 
+  "add_report.R", "add_tab.R",
+  "app_builder.R", "my_db.R", 
+  "queries.R", "stitch_script.R", 
+  "table.R"
+)
+
+# delete these files that in the package
+for (i in 1:length(dev_modules_files)) {
+  file.remove(
+    paste0(
+      tempdir(), 
+      "/myPackage/inst/myApp/modules_mgr/",
+      dev_modules_files[i]
+    )
+  )
+}
+```
+
+
+### 5. Modify **global.R**
+
+After removing the dependency on the *shinymgr* database and Developer Tools, the library call to *shinymgr* in line 6 of **global.R** is no longer needed. Instead, it can be replaced with the *shiny*, *shinydashboard*, and *shinyjs* packages.
+
+```{r, eval = F, attr.source='.numberLines', class.source="bg-danger"}
+5 >> # load required shiny framework packages
+6 >> library(shinymgr)
+```
+
+```{r, eval = F, attr.source='.numberLines', class.source="bg-success"}
+5 >> # load required shiny framework packages
+6 >> library(shiny)
+7 >> library(shinydashboard)
+8 >> library(shinyjs)
+```
+
+
+### 6. Add a launch function
+
+It is useful to write a function that your users will call to launch "myApp". Here, we create the file "launch_myApp.R", which will contain roxygen documentation and the function code. The function itself will contain no arguments . . . when the function is called, it will launch "myApp".
+
+```{r}
+launch_text <- c(
+  "#' @title Run the myApp shiny example",     
+  "#' @export",
+  "#' @examples",
+  "#' launch_myApp()",
+  "launch_myApp <- function() {",
+  "appDir <- system.file(",
+  "  'myApp', ",
+  "  package = 'myPackage'",
+  ")",
+  "shiny::runApp(appDir, display.mode = 'normal')",
+  "}"
+  )
+
+# create the function file and add to the package
+writeLines(
+  con = paste0(tempdir(), "/myPackage/R/launch_myApp.R"), 
+  text = launch_text
+)
+```
+
+Let's have a look at the code that was written:
+
+```{r, comment = NA, echo = FALSE}
+cat(
+  paste(
+    readLines(paste0(tempdir(), "/myPackage/R/launch_myApp.R")), 
+    collapse = '\n'
+  )
+)
+```
+
+### 7. Add shiny-related packages as dependencies
+
+The final step is to add the packages used in the app as package dependencies to the DESCRIPTION file. This means that users of "myPackage" will need to have *shiny*, *shinyjs*, and *shinydashboard* on their machine. When "myPackage" is loaded, *shiny*, *shinyjs*, and *shinydashboard* will also be loaded. Similary, we should add the *testthat* package as a "Suggests" package, as this package is needed to run the coding tests.
+
+```{r}
+dependencies <- c(
+  "Imports: ",
+  "  shiny,",
+  "  shinyjs,",
+  "  shinydashboard,",
+  "Suggests:",
+  "  testthat"
+)
+cat(dependencies, 
+    file = paste0(tempdir(), "/myPackage/DESCRIPTION"), 
+    sep = "\n", 
+    append = TRUE)
+```
+
+The DESCRIPTION file now reads:
+
+```{r, comment = NA, echo = FALSE}
+cat(
+  paste(
+    readLines(paste0(tempdir(), "/myPackage/DESCRIPTION")), 
+    collapse = '\n'
+  )
+)
+```
+
+### The final package
+
+At this point, your *shinymgr* project has been migrated over to a package (specifically, "myPackage"). Now, let's run the `document()` function again.
+
+```{r, warning = FALSE}
+devtools::document(pkg = paste0(tempdir(), "/myPackage"))
+```
+
+Next, we'll use the `dir_tree()` function from the package, *fs*, to show the full contents of "myPackage."
+
+```{r, comment = NA}
+library(fs)
+
+fs::dir_tree(
+  path = paste0(tempdir(), "/myPackage"),
+  recurse = TRUE)
+
+```
+
+This shows the full layout of a package that includes a *shinymgr* project. Note the `launch_myApp()` function is included in the R directory and the shiny app is included in a folder called "myApp", inside the "inst" folder.
+
+>&#128073;&#127995;Your package is complete. Now, when you compile your package for distribution, your user should be able to load your package, and launch the shiny app.
+
+```{r, eval = FALSE}
+library(myPackage)
+myPackage::launch_myApp()
+```
+
+## Shinyapps.io
+
+Another way to deploy your *shinymgr* project is on a server. There are many options for doing this (Shiny Server, RStudio Connect), but here will discuss deployment on shinyapps.io, a self-service platform that makes it easy to share your shiny applications on the web. The service runs in the cloud on shared servers that are operated by RStudio, and has both free and paid plans.
+
+>&#128073;&#127998; Please see <https://docs.posit.co/shinyapps.io/> for full details.
+
+Many tasks are common between including a *shinymgr* project in a package and deploying a *shinymgr* app on shinyapps.io. To deploy a *shinymgr* project on shinyapps.io, the following tasks should be completed:
+
+First, install `rsconnect` and create an account on shinyapps.io (instructions can be found [here](https://shiny.posit.co/r/articles/share/shinyapps/)).
+
+Then follow steps 1-5 from the [Incorporating shinymgr] section. 
+
+-  Copy the finished app files (data and apps) to a new directory.
+-  Modify **new_analysis.R** to remove *shinymgr* database dependencies.
+-  Remove the Developer Tools.
+-  Modify **global.R** to remove the rest of the *shinymgr* dependencies.
+
+Finally, follow the instructions from [Posit](https://shiny.posit.co/r/articles/share/shinyapps/) to publish MyApp on shinyapps.io.  
+
+Congratulations! You should now be able to access and share your *shinymgr* app on shinyapps.io!
+
+## Tutorial summary
+
+We've briefly discussed how to include *shinymgr* into your own projects. 
+
+>&#128073;&#127996; If you’d like a pdf of this document, use the browser “print” function (right-click, print) to print to pdf. If you want to include quiz questions and R exercises, make sure to provide answers to them before printing.
+
+## What's next
+
+You're finished! Really finished!
+
+If you would like to contribute to *shinymgr*, please visit our GitLab website at <https://code.usgs.gov/vtcfwru/shinymgr>, the canonical home of *shinymgr*. There, you can clone our repository, and make a "pull request" ("merge request") if you would like us to incorporate your new features to *shinymgr*. We also welcome "issues", where you can post code bugs, tutorial bugs, etc.

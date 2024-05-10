@@ -1,0 +1,60 @@
+---
+title: 'Annual Report for Linear Analysis'
+output: html_document
+params:
+  file: 
+   input: file
+   label: "Choose RDS"
+   value: ""
+   multiple: FALSE
+   buttonLabel: "Browse to analysis output..."
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(ggplot2)
+library(knitr)
+ps <- readRDS(params$file)
+```
+
+
+## Linear Equation Report
+
+
+This report summarizes an analysis done by `r ps$userName` for Shire Data Science in `r format(as.POSIXct(ps$timestamp), '%Y')`.   `r ps$userName` collected `r  ps$"mod1-nPts"` datapoints.  The data are shown below.
+
+
+
+```{r, fig.cap= paste0("Figure 1.  Data collected by ", ps$userName)}
+# browser()
+x_data <- ps$returns$data1$x
+y_data <- ps$returns$data2$y_perturbed
+y_pred <- predict(lm(y_data ~ poly(x_data, ps$returns$data3$degree)))[order(x_data)]
+gg <- ggplot(data.frame(x = x_data, y = y_data), aes(x, y)) + geom_point() + geom_line(
+          data = data.frame(
+            x = x_data[order(x_data)],
+            y = y_pred
+          ), 
+          color = "red"
+        )         + xlim(range(x_data)) + ylim(range(c(y_data, y_pred)))
+
+# gg <- ps$returns$data3$g
+plot(gg)
+```
+`r ps$userName` was able to fit a polynomial of degree `r ps$returns$data3$degree` to the data, with the following coefficients:
+
+```{r}
+model_coeffs <- ps$returns$data3$coeff
+rownames(model_coeffs) <- c("Intercept", "Coefficient 1", "Coefficient 2")
+
+kable(model_coeffs, caption = "Linear coefficients")
+```
+
+We look forward to next year's analysis.
+
+Respectfully submitted,
+
+Gandalf
+
+
+

@@ -1,0 +1,331 @@
+---
+title: "shinymgr-06: shinymgr"
+tutorial:
+  id: "shinymgr"
+  version: 1.1
+output: 
+  learnr::tutorial:
+    allow_skip: true
+    css: css/style.css
+bibliography: www/shinymgr.bib
+csl: www/apa.csl
+runtime: shiny_prerendered
+description: "Describes how to setup a shinymgr framework on your machine."
+---
+
+```{r setup, include=FALSE}
+source('www/includes.R')
+```
+
+## ![](images/shinymgr-hexsticker.png){width=50px} Introduction
+
+By now, you've learned what a shiny app is and what modules are. In previous tutorials, we created the "iris_cluster" and "subset_rows" stand-alone modules, then learned how to connect the two modules to form an "app module" called "iris_explorer", which provides a guided tab-by-tab analytical workflow.  The "app module" isn't executed itself, but rather can be launched from a "master app" (as illustrated below).  We also learned how to write testing scripts with the *testthat* and *shinytest* packages to ensure that modules perform as expected.  
+
+```{r, echo = FALSE}
+
+fluidPage(
+  
+  # we keep the header from earlier
+  h1("Master App"),
+  
+  # each module will have its own tab
+  tabsetPanel(
+    
+    #k-means clustering tab
+    tabPanel(
+      title = "K-means clustering",
+      iris_cluster_ui("iris")
+    ),
+    
+    #subset rows tab
+    tabPanel(
+      title = "Subset Rows",
+      subset_rows_ui("subset")
+    )
+  )
+)
+
+```
+
+```{r, eval = TRUE, echo = FALSE, context = "server"}
+  
+ # store the output from the iris_cluster module 
+  data1 <- iris_cluster_server("iris")
+  
+  # call the server function, setting the reactive return as the input
+  data2 <- subset_rows_server("subset", dataset = data1$returndf)
+
+  
+```
+
+However, developers of Shiny apps that rely on a modularized system to guide a user through an analysis will naturally be faced with several questions:
+
+1. Which modules have been written?
+2. What are the module's inputs (arguments) and outputs (returns)?
+3. Where are the modules stored?
+4. For an app such as "iris_explorer", what is the order in which modules are presented to the Shiny user?
+
+Users of a *shinymgr* app may also wonder:
+
+5. Can analysis outputs be saved as a fully reproducible workflow?
+6. Can outputs be ingested into a Rmarkdown file for rapid reporting?
+
+> &#128073;&#127999; The R package, *shinymgr*, was developed to meet these challenges.  The package itself includes a general framework for managing modules, stitching them together as individuals "apps", saving reproducible analysis outputs, and offering opportunities for rapid reporting. It can be used as a stand-alone Shiny application that is housed on a local machine or a server, or can be embedded within R packages for developers who wish to provide Shiny functionality for showcasing their own package.
+
+This tutorial introduces the *shinymgr* framework and how to initiate a *shinymgr* project locally.
+
+## Introducing shinymgr
+
+Before we begin, it's useful to see *shinymgr* in action.
+
+> &#128073;&#127995; **Very, very important!  Next, we give a glimpse of the *shinymgr* framework that comes with the package.  Please look at the framework but do not touch! If you skip ahead and actually start creating apps in this instance, you will wreck the demo app that comes with the package and will need to re-install *shinymgr* to reinstate the original demo.  In the next section, you will copy the *shinymgr* framework onto your own machine with the `shinymgr_setup()` function, where you can muck about all you'd like.** 
+
+<p class = "instructions">
+Open a new session in RStudio. Go to Session | New Session.  Then, in that session, type in the following code in the console:
+</p>
+
+```{r, eval = FALSE}
+library(shinymgr)
+
+launch_shinymgr(
+  shinyMgrPath = paste0(
+    find.package("shinymgr"), 
+    "/shinymgr"
+  )
+)
+```
+
+You should see the *shinymgr* Developer's Portal appear in the new instance.  The left menu displays "Analysis (beta)", "Reports (beta)", and "Developer Tools".  
+
+
+> &#128073;&#127998; The Developer's Portal is targeted for developers. The "Developer Tools" section allows developers to create and register new modules and to combine them into new apps.  The "Analysis (beta)" and "Reports (beta)" sections allow a developer to beta-test analyses and reports from the user's perspective.  We describe the process of deploying completed apps in the "deployment" tutorial.
+
+
+> &#128073;&#127997; If you're using RStudio, pressing Ctrl and the - key will zoom the app out, while pressing Ctrl, Shift, and the + key will zoom the app in. 
+
+Under "Analysis (beta)", the developer can test-drive one of the apps you have created (such as "iris_explorer").  For example, click on the "iris_explorer" app under "Select an analysis".  Choose "Select New Analysis", and then "Start New Analysis", and you should see the now-familiar app, which establishes a tab-based workflow for your user.  This app is essentially the same app we built in a previous tutorial.  It starts with an introductory tab that provides the user with an overview.  The second tab is "Cluster Iris Data" tab, where a user selects two columns from the iris dataset and clusters them into groups. **Look for the "Next" button at the bottom of this tab to advance to the next tab.** Tab 3 is "Subset Rows", which allows the user to indicate how many rows to sample, and returns the sampled data.  **Look for the "Next" button at the bottom of this tab.** Tab 4 features "Plot Column" module, and allows the user to select a column and create a histogram of the column's data. **Look for the "Next" button at the bottom of this tab to advance to the next tab.**  Tab 5 is a "Save" tab, and is added at the end of each *shinymgr* app. It allows the user to download an RDS file to their downloads folder and copy it anywhere on their computer, with a default name such as "iris_explorer_Gandalf_2023_05_31_11_48.RDS".  
+
+```{r, echo = FALSE, out.width="100%", fig.cap= "*Figure 1. The overall shinymgr layout, showing the tab-based approach for running the 'iris_explorer' app.*"}
+knitr::include_graphics('images/appImage.PNG')
+```
+
+
+The "Developer Tools" is what you, the *shinymgr* developer, will use to create the apps that serve your own purposes.   Here, you can also view the *shinymgr* database, including any modules that have been registered.  Then you can use the "Build App" tab to create new apps that stitch modules together, such as the "iris_explorer" app.  The "Queries" tab features a handful of canned database queries, but you can always query the database directly with functions from the *DBI* package [@DBI].  Each app can have one or more Rmarkdown reports (.Rmd) or Quarto (.qmd) associated with them to permit rapid-reporting, as facilitated by the "Add Report" tab. 
+
+```{r, echo = FALSE, out.width = "100%", fig.cap= "*Figure 2. The overall shinymgr layout, showing the Build App functionality in the Developer Tools.*"}
+
+knitr::include_graphics('images/devtools.PNG')
+
+```
+
+
+> &#128073;&#127999;  To summarize . . . You're looking at the *shinymgr* framework that comes with the package.  The framework is largely module-based.  As we've already learned in previous tutorials, modules are stand-alone, composable bits of shiny code that can be stored and tested.  A *shinymgr* app such as "iris_explorer" stitches together modules as a tabbed workflow.  Such apps are built with *shinymgr*'s app builder.  The *shinymgr* database tracks all modules, apps, and associated reports. **Close this instance of RStudio now. . . you can open a new instance in the next section.**
+
+The next section will show you how to start your own *shinymgr* project.  
+
+
+## shinymgr_setup()
+
+To use the *shinymgr* package, the first step is to load the package and run the `shinymgr_setup()` function, which will establish a new *shinymgr* project on your machine.  
+
+```{r help1, eval = FALSE, exercise  = TRUE}
+help(topic = "shinymgr_setup", package = "shinymgr")
+```
+
+This function will create the required *shinymgr* directory structure on your machine.  The function has two main arguments:
+
+1. parentPath = the path to the parent directory (the directory that will house your shinymgr project).  This parent folder can have any name and be located anywhere on your machine. **It can also be an RStudio project that has "renv" enabled [@renv], which essentially copies all project dependencies, providing package management and making the project fully portable.  For more info, see https://rstudio.github.io/renv/articles/renv.html**
+2. demo = TRUE or FALSE.  Should the demo database and demo modules/apps be included in your new *shinymgr* project?  The default is FALSE.  We specify demo = TRUE in all *learnr* tutorials.
+
+
+The function will create a folder called "shinymgr" within the specified parent directory.  Further, it will create nine subfolders, each of which stores specific elements of the *shinymgr* framework (described in the next section).  If demo = TRUE, these directories will be populated with sample modules and a sample database that can be used to explore the package's functionality.
+
+> &#128073;&#127996;  Note:  The code below shows the typical steps that would be used when not in tutorial-mode.  Open a new instance of RStudio, and try copying the following code and running it in the console. It will create a *shinymgr* project in that instance's temporary directory.
+
+```{r, warning=FALSE, eval = FALSE}
+# set the directory path that will house the shinymgr project
+parentPath <- tempdir()
+
+# set up raw directories and fresh database
+shinymgr::shinymgr_setup(
+  parentPath = parentPath, 
+  demo = TRUE
+)
+```
+
+## The shinymgr directory structure 
+
+As mentioned, the `shinymgr_setup()` function will create a folder called "shinymgr", and will further add nine subdirectories and three .R files ("ui.R", "server.R", and "global.R").  Let's have a look at the visual representation:
+
+
+```{r, echo = FALSE, comment = NA}
+fs::dir_tree(
+  path = paste0(tempdir(), "/shinymgr"),
+  recurse = FALSE)
+```
+
+
+We will introduce each folder when the time is right, but in short, they serve the following purpose:
+
+1. **analyses** - a folder to store saved analyses (RDS files), if desired. (This folder is included for the developer to beta test the output from an app and to provide an example, but users can store analyses anywhere they'd like.)
+2. **data** - stores fixed datasets as RData files that can be used by a module.
+3. **database** - stores the *shinymgr* database for tracking modules, tabs, apps and their associated reports. The database is described in the "database" tutorial.
+4. **modules** - stores individual, stand-alone modules, such as "iris_cluster.R" and "subset_rows.R"
+6. **modules_app** - stores "apps" as modules, such as "iris_explorer.R" 
+7. **modules_mgr** - the modules that are part of the *shinymgr* application (e.g., modules for building apps and running analyses). 
+8. **reports** - stores templates for reports as .Rmd or .qmd files that accept saved analyses (RDS files) as inputs to quickly generate reports.
+9. **tests** - stores testing code to ensure stand-alone modules and the overall application do not break.
+10. **www** - store images that are used in Shiny.
+
+We will discuss the database in depth in the next tutorial.  
+
+If you set "demo" = TRUE (as we have for this tutorial), each directory will include several demo files as shown in the next section.  If "demo" = FALSE, these directories will be largely empty, except for the "modules_mgr" directory and "database" directory, which will include a new, empty SQLite database.
+
+<p class = 'instructions'>
+If you have a new instance of RStudio running, try enter the following code to launch *shinymgr*.
+</p>
+
+```{r, eval = FALSE}
+shinymgr::launch_shinymgr(
+  shinyMgrPath = paste0(tempdir(), "/shinymgr")
+)
+```
+
+> &#128073;&#127998; This should look identical to the previous launch, except that you are now running the copy of *shinymgr* on your machine that was created when you ran `shinymgr_setup()` rather than the copy that comes with the package.  You can muck about all you'd like in this version as it won't create havoc with the package's demo.
+
+## The shinymgr demo files
+
+As you've seen, the `shinymgr_setup()` function copies several folders and associated files to the *shinymgr* directory in a user-specified folder.  If you set "demo" = TRUE, each directory will include several demo files as shown below.  
+
+```{r, echo = FALSE, comment = NA}
+fs::dir_tree(
+  path = paste0(tempdir(), "/shinymgr"),
+  recurse = TRUE)
+```
+
+Let's review the directory structure and highlight some of the demo files.
+
+- The **analyses** folder will store previously run analyses as RDS files.  Each of these analyses provides the app name (e.g. "iris_explorer"), the name of the person who ran the analysis (e.g. "Gandalf"), and the date and time of the analysis (e.g., "iris_explorer_Gandalf_2023_06_05_16_30.RDS"). Analyses are described in the "analyses" tutorial.
+
+- The **data** folder stores RData files that can be used by various apps (e.g., "iris.RData").
+
+- The **database** folder stores the *shinymgr* SQLite database, which is described in detail in the next tutorial.  The database is named "shinymgr.sqlite", and tracks all modules, their arguments (inputs), returns (outputs), and how they are combined into an "app". The database is described in the "database" tutorial.
+
+- The **modules** folder stores stand-alone modules. These files are largely written by hand with the help of the `mod_init()` function, and are registered in the database with the help of the `mod_register()` function (described in the "shinymgr_modules" tutorial).  The ten modules listed are demo modules that come with the *shinymgr* package.  Notice the "iris_cluster.R" and "subset_rows.R" files are in this directory. 
+
+- The **modules_app** folder stores modules that are *shinymgr* "apps" -- the stitching together of modules into a tab-based layout that provides an analysis workflow. Three "apps" are included in the demo files, including "iris_explorer.R". **The modules_app files are not written by hand - instead, they are created with the  *shinymgr* "App Builder".**  We will show you how to build "apps" in the "apps" tutorial.
+
+-  The **modules_mgr** folder stores modules that build the default *shinymgr* framework that you see when you run `launch_shinymgr()`.  
+
+- The **reports** folder stores RMarkdown (.Rmd) or Quart (.qmd) files that serve as canned reports (e.g., "iris_explorer_report.Rmd"). These markdown files allow a user to navigate to a previously stored analysis (an RDS file) and use the results in the report itself, allowing for rapid reporting. Reports are described in the "reports" tutorial. 
+
+- The **tests** folder stores both *testthat* and *shinytest* code testing scripts as described in the "tests" tutorial.
+
+- The **www** folder stores images that may be used by a shiny app.  
+
+- In the main *shinymgr* directory, there are three files. Briefly, these files generate the master Shiny app and the code is pasted into the next few sections.  
+
+  1. **ui.R** - This file contains code to set the user interface for the master *shinymgr* app (ui = user interface).  
+  2. **server.R** - The master server file.  
+  3. **global.R** - The global.R file is sourced into the server.R file at start-up.  It simply instructs R to read in all of the modules within the *shinymgr* framework.
+
+
+## The ui.R script
+
+The master *shinymgr* ui script is shown below for convenience.  This is the master shiny UI and makes use of the *shinydashboard* [@shinydashboard] package for a dashboard layout.  Notice the script calls six manager modules:  "new_analysis", "new_report", "build_app", "my_db", "queries", and "add_report".
+
+```{r, eval = T, comment = '', class.output='r', echo=FALSE}
+cat(paste(readLines(paste(system.file(package = "shinymgr"), 'shinymgr', 'ui.R', sep = '/')), collapse = '\n'))
+```
+
+## The global.R script
+
+The "global.R" script establishes a global level variable called "shinyMgrPath" (the main directory called "shinymgr"), which is passed as an argument to launch_shinymgr().  It loads *shinymgr*'s main package dependencies such as shiny, shinydashboard, etc.  
+
+It then sources in all packages required by the stand-alone modules.  Finally, it sources in all manager module scripts, stand-alone module scripts and app module scripts.
+
+```{r, eval = T, comment = '', class.output='r', echo=FALSE}
+cat(paste(readLines(paste(system.file(package = "shinymgr"), 'shinymgr', 'global.R', sep = '/')), collapse = '\n'))
+```
+
+## The server.R script
+
+The master **shinymgr** server script is shown below. 
+
+```{r, eval = T, comment = '', class.output='r', echo=FALSE}
+cat(paste(readLines(paste(system.file(package = "shinymgr"), 'shinymgr', 'server.R', sep = '/')), collapse = '\n'))
+```
+
+
+> &#128073;&#127998; Please note that this framework is targeted for developers; once apps are ready to be unleashed for use in the real world, portions of the *shinymgr* framework can be copied to a deployment framework and modified, essentially divorcing the development version from the deployment version (as described in the deployment tutorial).
+
+
+> &#128073;&#127995; In a nutshell, the R package, *shinymgr* is a general framework for managing modules, stitching them together as individuals "apps", saving reproducible analysis outputs, and offering opportunities for rapid reporting. It can be used as a stand-alone Shiny application that is housed on a local machine or a server, or can be embedded within R packages for developers who wish to provide Shiny functionality for showcasing their own package.
+
+## The renv package
+
+We mentioned that a *shinymgr* can be set up within an RStudio project that is "renv" enabled [@renv].  What does this mean?  A article on RStudio explains (https://rstudio.github.io/renv/articles/renv.html):
+
+"renv is an R dependency manager. Use *renv* to make your projects more:
+
+- Isolated: Each project gets its own library of R packages, so you can feel free to upgrade and change package versions in one project without worrying about breaking your other projects.
+
+- Portable: Because renv captures the state of your R packages within a lockfile, you can more easily share and collaborate on projects with others, and ensure that everyone is working from a common base.
+
+- Reproducible: Use renv::snapshot() to save the state of your R library to the lockfile renv.lock. You can later use renv::restore() to restore your R library exactly as specified in the lockfile."
+
+This [video](https://www.youtube.com/watch?v=yjlEbIDevOs&t=48s) by Kevin Ushey explains the motivation and concept behind the package, *renv*:
+
+
+![](https://www.youtube.com/watch?v=yjlEbIDevOs&t=48s)
+
+> &#128073;&#127996; *renv* is a package dependency of *shinymgr*.  We use *renv* to capture the R version and packages used by the developer when creating a *shinymgr* app. This information is carried along through the analysis stage, where a user's analyis outputs are captured in an RDS file, including the "renv" lockfile.  If the user is unable to rerun an analysis (things go awry), the lockfile contains information that hopefully will allow a user to restore the R version and packages used in a previously run analysis (described in the "analyses" tutorial).  Developers may further choose to make their *shinymgr* project *renv* enabled.
+
+To create a project in RStudio that is *renv* enabled, first install the package.
+
+```{r, eval = FALSE}
+install.packages("renv")
+```
+
+Then, create a new project in RStudio.  Go to File | New Project | New Directory | New Project.
+
+```{r, echo = FALSE, out.width = "100%", fig.cap = "*You can use shinymgr within an R Studio project that has renv enabled.  First, create the project as a new directory.  Then, run shinymgr_setup, using this directory as the parent directory.*"}
+
+knitr::include_graphics('images/renv.PNG')
+```
+
+
+> &#128073;&#127999; This project will be the "parent" to your new *shinymgr* project, and you can enjoy the many benefits of running *shinymgr* with *envr*.  Alternatively, you can always enable *renv* at a later time!
+
+## Summary
+
+This tutorial introduces the `shinymgr_setup()` function.  It creates the directory structure and underlying database needed for building and running Shiny apps with *shinymgr*. You can create as many *shinymgr* projects on your machine as you'd like.  In each case, the *shinymgr* project is simply a fixed directory structure with three R files (ui.R, server.R, and global.R), and a series of subdirectories that contain the apps and modules that you develop, along with a database for tracking everything.  YOU will develop your own modules and use the *shinymgr* "App Builder" to create apps that stitch your modules together and guide your user through a tabbed workflow.
+
+Once you have finished with module and app development, you can remove any of your app's dependencies on the *shinymgr* framework and copy it into your own package or deploy it on a server.  The "deployment" tutorial will guide you step-by-step.
+
+>&#128073;&#127996; If you’d like a pdf of this document, use the browser “print” function (right-click, print) to print to pdf. If you want to include quiz questions and R exercises, make sure to provide answers to them before printing.
+
+If you wish to go deeper, these links provide very informative information on the *renv* package: 
+
+- https://posit.co/blog/renv-project-environments-for-r/.
+- https://rstudio.github.io/renv/articles/renv.html.
+
+## References
+
+
+<div id="refs"></div>
+
+## What's next?
+
+Our next stop is the *shinymgr* database, which tracks all elements of a *shinymgr* framework.  See you there!
+
+```{r, eval = FALSE}
+learnr::run_tutorial(
+  name = "database", 
+  package = "shinymgr"
+)
+```
+
+
+
+
